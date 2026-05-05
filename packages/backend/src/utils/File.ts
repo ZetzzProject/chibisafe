@@ -1,49 +1,21 @@
-import path, {
-    basename,
-    extname
-} from 'node:path';
+import path, { basename, extname } from 'node:path';
 import process from 'node:process';
-import {
-    URL,
-    fileURLToPath
-} from 'node:url';
-import {
-    DeleteObjectsCommand
-} from '@aws-sdk/client-s3';
-import {
-    Blake3Hasher
-} from '@napi-rs/blake-hash';
+import { URL, fileURLToPath } from 'node:url';
+import { DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { Blake3Hasher } from '@napi-rs/blake-hash';
 import slugify from '@sindresorhus/slugify';
 import Zip from 'adm-zip';
-import type {
-    FastifyRequest
-} from 'fastify';
+import type { FastifyRequest } from 'fastify';
 import jetpack from 'fs-jetpack';
 import moment from 'moment';
 import randomstring from 'randomstring';
-import {
-    v4 as uuidv4
-} from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import prisma from '@/structures/database.js';
-import type {
-    FileInProgress,
-    RequestUser,
-    User
-} from '@/structures/interfaces.js';
-import {
-    SETTINGS
-} from '@/structures/settings.js';
-import {
-    log
-} from '@/utils/Logger.js';
-import {
-    generateThumbnails,
-    getFileThumbnail,
-    removeThumbs
-} from './Thumbnails.js';
-import {
-    getHost
-} from './Util.js';
+import type { FileInProgress, RequestUser, User } from '@/structures/interfaces.js';
+import { SETTINGS } from '@/structures/settings.js';
+import { log } from '@/utils/Logger.js';
+import { generateThumbnails, getFileThumbnail, removeThumbs } from './Thumbnails.js';
+import { getHost } from './Util.js';
 
 const fileIdentifierMaxTries = 5;
 
@@ -56,442 +28,443 @@ export const tmpUploadPath = fileURLToPath(new URL('../../../../uploads/tmp', im
 export const quarantinePath = fileURLToPath(new URL('../../../../uploads/quarantine', import.meta.url));
 
 export const isExtensionBlocked = (extension: string) => {
-    if (!extension && SETTINGS.blockNoExtension) return true;
-    return SETTINGS.blockedExtensions.includes(extension);
+	if (!extension && SETTINGS.blockNoExtension) return true;
+	return SETTINGS.blockedExtensions.includes(extension);
 };
 
-export const getMimeFromType = (fileTypeMimeObj: Record < string, null > ) => fileTypeMimeObj.mime;
+export const getMimeFromType = (fileTypeMimeObj: Record<string, null>) => fileTypeMimeObj.mime;
 
-export const getUniqueFileIdentifier = async (): Promise < string | null > => {
-    const options = {
-        length: SETTINGS.generatedFilenameLength
-    };
+export const getUniqueFileIdentifier = async (): Promise<string | null> => {
+	const options = {
+		length: SETTINGS.generatedFilenameLength
+	};
 
-    if (!SETTINGS.enableMixedCaseFilenames || process.platform === 'win32') {
-        // @ts-ignore
-        options.capitalization = 'lowercase';
-    }
+	if (!SETTINGS.enableMixedCaseFilenames || process.platform === 'win32') {
+		// @ts-ignore
+		options.capitalization = 'lowercase';
+	}
 
-    for (let i = 0; i < fileIdentifierMaxTries; i++) {
-        const identifier = randomstring.generate(options);
+	for (let i = 0; i < fileIdentifierMaxTries; i++) {
+		const identifier = randomstring.generate(options);
 
-        const exists = await prisma.$queryRaw < {
-            id: number
-        } [] > `
+		const exists = await prisma.$queryRaw<
+			{
+				id: number;
+			}[]
+		>`
 		SELECT id from files
 		WHERE name LIKE ${`${identifier}.%`}
 		LIMIT 1;
-	    `
+	    `;
 
-        if (!exists.length) {
-            return identifier;
-        }
-    }
+		if (!exists.length) {
+			return identifier;
+		}
+	}
 
-    log.error('Couldnt allocate identifier for file');
-    return null;
+	log.error('Couldnt allocate identifier for file');
+	return null;
 };
 
 export const deleteTmpFile = async (uploadPath: string) => {
-    try {
-        await jetpack.removeAsync(uploadPath);
-    } catch (error) {
-        log.error(`There was an error removing the file at < ${uploadPath} >`);
-        log.error(error);
-    }
+	try {
+		await jetpack.removeAsync(uploadPath);
+	} catch (error) {
+		log.error(`There was an error removing the file at < ${uploadPath} >`);
+		log.error(error);
+	}
 };
 
 export const deleteFiles = async ({
-    files,
-    deleteFromDB = false
+	files,
+	deleteFromDB = false
 }: {
-    deleteFromDB ? : boolean;
-    files: {
-        isS3: boolean;
-        isWatched: boolean;
-        name: string;
-        quarantine: boolean;
-        quarantineFile: {
-            name: string
-        } | null;
-        uuid: string;
-    } [];
+	deleteFromDB?: boolean;
+	files: {
+		isS3: boolean;
+		isHF: boolean;
+		isWatched: boolean;
+		name: string;
+		quarantine: boolean;
+		quarantineFile: {
+			name: string;
+		} | null;
+		uuid: string;
+	}[];
 }) => {
-    const s3Files = files.filter(file => file.isS3);
-    const hfFiles = files.filter(file => file.isHF);
-    const localFiles = files.filter(file => !file.isS3 && !file.isHF);
+	const s3Files = files.filter(file => file.isS3);
+	const hfFiles = files.filter(file => file.isHF);
+	const localFiles = files.filter(file => !file.isS3 && !file.isHF);
 
-    try {
-        if (s3Files.length) {
-            const {
-                createS3Client
-            } = await import('@/structures/s3.js');
-            const S3Client = createS3Client();
+	try {
+		if (s3Files.length) {
+			const { createS3Client } = await import('@/structures/s3.js');
+			const S3Client = createS3Client();
 
-            const command = new DeleteObjectsCommand({
-                Bucket: SETTINGS.S3Bucket,
-                Delete: {
-                    Objects: s3Files.map(file => ({
-                        Key: file.quarantine ? `quarantine/${file.quarantineFile?.name}` ?? file.name : file.name
-                    })),
-                    Quiet: true
-                }
-            });
+			const command = new DeleteObjectsCommand({
+				Bucket: SETTINGS.S3Bucket,
+				Delete: {
+					Objects: s3Files.map(file => ({
+						Key: file.quarantine ? (`quarantine/${file.quarantineFile?.name}` ?? file.name) : file.name
+					})),
+					Quiet: true
+				}
+			});
 
-            await S3Client.send(command);
-        }
-        if (hfFiles.length) {
-            for (const file of hfFiles) {
-                const key = file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name;
-                const hfDeleteUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/files/${key}`;
-                await fetch(hfDeleteUrl, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${SETTINGS.HFToken}`
-                    }
-                }).catch(e => log.error(`Failed to delete HF file: ${file.name} - ${e.message}`));
-            }
-        }
-        if (localFiles.length) {
-            for (const file of localFiles) {
-                if (file.quarantine) {
-                    await prisma.files.update({
-                        where: {
-                            uuid: file.uuid
-                        },
-                        data: {
-                            quarantine: false,
-                            quarantineFile: {
-                                delete: true
-                            }
-                        }
-                    });
-                }
+			await S3Client.send(command);
+		}
+		if (hfFiles.length) {
+			for (const file of hfFiles) {
+				const key = file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name;
+				const hfDeleteUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/files/${key}`;
+				await fetch(hfDeleteUrl, {
+					method: 'DELETE',
+					headers: {
+						Authorization: `Bearer ${SETTINGS.HFToken}`
+					}
+				}).catch(e => log.error(`Failed to delete HF file: ${file.name} - ${e.message}`));
+			}
+		}
+		if (localFiles.length) {
+			for (const file of localFiles) {
+				if (file.quarantine) {
+					await prisma.files.update({
+						where: {
+							uuid: file.uuid
+						},
+						data: {
+							quarantine: false,
+							quarantineFile: {
+								delete: true
+							}
+						}
+					});
+				}
 
-                await jetpack.removeAsync(
-                    path.join(
-                        file.quarantine ? quarantinePath : file.isWatched ? watchPath : uploadPath,
-                        file.quarantine ? file.quarantineFile?.name ?? file.name : file.name
-                    )
-                );
-            }
-        }
+				await jetpack.removeAsync(
+					path.join(
+						file.quarantine ? quarantinePath : file.isWatched ? watchPath : uploadPath,
+						file.quarantine ? (file.quarantineFile?.name ?? file.name) : file.name
+					)
+				);
+			}
+		}
 
-        for (const file of files) {
-            await deleteThumbnails(file.name);
-        }
+		for (const file of files) {
+			await deleteThumbnails(file.name);
+		}
 
-        if (deleteFromDB) {
-            await prisma.files.deleteMany({
-                where: {
-                    uuid: {
-                        in: files.map(file => file.uuid)
-                    }
-                }
-            });
-        }
-    } catch (error) {
-        log.error(`There was an error removing one/all of the files < [${files.map(file => file.name).join(', ')}] >`);
-        log.error(error);
-    }
+		if (deleteFromDB) {
+			await prisma.files.deleteMany({
+				where: {
+					uuid: {
+						in: files.map(file => file.uuid)
+					}
+				}
+			});
+		}
+	} catch (error) {
+		log.error(`There was an error removing one/all of the files < [${files.map(file => file.name).join(', ')}] >`);
+		log.error(error);
+	}
 };
 
 export const deleteThumbnails = async (filename: string) => {
-    const thumbName = getFileThumbnail(filename);
-    if (thumbName) await removeThumbs(thumbName);
+	const thumbName = getFileThumbnail(filename);
+	if (thumbName) await removeThumbs(thumbName);
 };
 
 export const purgeUserFiles = async (userId: number) => {
-    try {
-        const files = await prisma.files.findMany({
-            where: {
-                userId
-            },
-            include: {
-                quarantineFile: true
-            }
-        });
+	try {
+		const files = await prisma.files.findMany({
+			where: {
+				userId
+			},
+			include: {
+				quarantineFile: true
+			}
+		});
 
-        await deleteFiles({
-            files
-        });
+		await deleteFiles({
+			files
+		});
 
-        await prisma.files.deleteMany({
-            where: {
-                userId
-            }
-        });
-    } catch (error) {
-        log.error(error);
-    }
+		await prisma.files.deleteMany({
+			where: {
+				userId
+			}
+		});
+	} catch (error) {
+		log.error(error);
+	}
 };
 
 export const purgePublicFiles = async () => {
-    try {
-        const files = await prisma.files.findMany({
-            where: {
-                userId: null
-            },
-            include: {
-                quarantineFile: true
-            }
-        });
+	try {
+		const files = await prisma.files.findMany({
+			where: {
+				userId: null
+			},
+			include: {
+				quarantineFile: true
+			}
+		});
 
-        await deleteFiles({
-            files
-        });
+		await deleteFiles({
+			files
+		});
 
-        await prisma.files.deleteMany({
-            where: {
-                userId: null
-            }
-        });
-    } catch (error) {
-        log.error(error);
-    }
+		await prisma.files.deleteMany({
+			where: {
+				userId: null
+			}
+		});
+	} catch (error) {
+		log.error(error);
+	}
 };
 
 export const purgeIpFiles = async (ip: string) => {
-    try {
-        const files = await prisma.files.findMany({
-            where: {
-                ip
-            },
-            include: {
-                quarantineFile: true
-            }
-        });
+	try {
+		const files = await prisma.files.findMany({
+			where: {
+				ip
+			},
+			include: {
+				quarantineFile: true
+			}
+		});
 
-        await deleteFiles({
-            files
-        });
+		await deleteFiles({
+			files
+		});
 
-        await prisma.files.deleteMany({
-            where: {
-                ip
-            }
-        });
-    } catch (error) {
-        log.error(error);
-    }
+		await prisma.files.deleteMany({
+			where: {
+				ip
+			}
+		});
+	} catch (error) {
+		log.error(error);
+	}
 };
 
 export const getFilenameFromPath = (fullPath: string) => fullPath.replace(/^.*[/\\]/, ''); // eslint-disable-line no-useless-escape
 
 export const createZip = (files: string[], albumUuid: string) => {
-    try {
-        const zip = new Zip();
-        for (const file of files) {
-            zip.addLocalFile(path.join(uploadPath, file));
-        }
+	try {
+		const zip = new Zip();
+		for (const file of files) {
+			zip.addLocalFile(path.join(uploadPath, file));
+		}
 
-        zip.writeZip(fileURLToPath(new URL(`../../../../uploads/zips/${albumUuid}.zip`, import.meta.url)));
-    } catch (error) {
-        log.error(error);
-    }
+		zip.writeZip(fileURLToPath(new URL(`../../../../uploads/zips/${albumUuid}.zip`, import.meta.url)));
+	} catch (error) {
+		log.error(error);
+	}
 };
 
 export const constructFilePublicLink = ({
-    req,
-    fileName,
-    quarantine = false,
-    isS3 = false,
-    isHF = false,
-    isWatched = false
+	req,
+	fileName,
+	quarantine = false,
+	isS3 = false,
+	isHF = false,
+	isWatched = false
 }: {
-    fileName: string;
-    isS3 ? : boolean;
-    isHf ? : boolean,
-    isWatched ? : boolean;
-    quarantine ? : boolean;
-    req: FastifyRequest;
+	fileName: string;
+	isS3?: boolean;
+	isHF?: boolean;
+	isWatched?: boolean;
+	quarantine?: boolean;
+	req: FastifyRequest;
 }) => {
-    const host = SETTINGS.serveUploadsFrom ? SETTINGS.serveUploadsFrom : getHost(req);
-    let url = `${host}${quarantine ? '/quarantine' : ''}${isWatched ? '/live' : ''}/${fileName}`;
+	const host = SETTINGS.serveUploadsFrom ? SETTINGS.serveUploadsFrom : getHost(req);
+	let url = `${host}${quarantine ? '/quarantine' : ''}${isWatched ? '/live' : ''}/${fileName}`;
 
-    if (isS3) {
-        url = `${SETTINGS.S3PublicUrl || SETTINGS.S3Endpoint}${quarantine ? '/quarantine' : ''}/${fileName}`;
-    } else if (isHF) {
-        url = `https://huggingface.co/buckets/${SETTINGS.HFBucket}/resolve/main/${quarantine ? 'quarantine/' : ''}${fileName}`;
-    }
-    const data = {
-        url: url,
-        thumb: '',
-        preview: ''
-    };
+	if (isS3) {
+		url = `${SETTINGS.S3PublicUrl || SETTINGS.S3Endpoint}${quarantine ? '/quarantine' : ''}/${fileName}`;
+	} else if (isHF) {
+		url = `https://huggingface.co/buckets/${SETTINGS.HFBucket}/resolve/main/${quarantine ? 'quarantine/' : ''}${fileName}`;
+	}
+	const data = {
+		url: url,
+		thumb: '',
+		preview: ''
+	};
 
-    const {
-        thumb,
-        preview
-    } = getFileThumbnail(fileName) ?? {};
-    if (thumb) {
-        data.thumb = `${host}/thumbs/${thumb}`;
-        if (preview) {
-            data.preview = `${host}/thumbs/preview/${preview}`;
-        }
-    }
+	const { thumb, preview } = getFileThumbnail(fileName) ?? {};
+	if (thumb) {
+		data.thumb = `${host}/thumbs/${thumb}`;
+		if (preview) {
+			data.preview = `${host}/thumbs/preview/${preview}`;
+		}
+	}
 
-    return data;
+	return data;
 };
 
 export const checkFileHashOnDB = async (user: RequestUser | User | undefined, file: FileInProgress) => {
-    const dbFile = await prisma.files.findFirst({
-        where: {
-            hash: file.hash,
-            size: file.size,
-            // Must be null for guest uploads,
-            // to ensure guests uploads will only be matched against other guest uploads
-            user: user ?
-                {
-                    id: user.id
-                } :
-                {}
-        }
-    });
+	const dbFile = await prisma.files.findFirst({
+		where: {
+			hash: file.hash,
+			size: file.size,
+			// Must be null for guest uploads,
+			// to ensure guests uploads will only be matched against other guest uploads
+			user: user
+				? {
+						id: user.id
+					}
+				: {}
+		}
+	});
 
-    if (dbFile) {
-        return {
-            // TODO: If public uploads are enabled we probably should NOT return the IP
-            // from which the file was uploaded
-            file: dbFile,
-            repeated: true
-        };
-    }
+	if (dbFile) {
+		return {
+			// TODO: If public uploads are enabled we probably should NOT return the IP
+			// from which the file was uploaded
+			file: dbFile,
+			repeated: true
+		};
+	}
 
-    return null;
+	return null;
 };
 
 export const checkFileNameOnDB = async (user: RequestUser | User | undefined, fileName: string) => {
-    const dbFile = await prisma.files.findFirst({
-        where: {
-            name: fileName,
-            isWatched: true,
-            user: user ?
-                {
-                    id: user.id
-                } :
-                {}
-        }
-    });
+	const dbFile = await prisma.files.findFirst({
+		where: {
+			name: fileName,
+			isWatched: true,
+			user: user
+				? {
+						id: user.id
+					}
+				: {}
+		}
+	});
 
-    if (dbFile) {
-        return {
-            file: dbFile,
-            repeated: true
-        };
-    }
+	if (dbFile) {
+		return {
+			file: dbFile,
+			repeated: true
+		};
+	}
 
-    return null;
+	return null;
 };
 
 export const storeFileToDb = async (
-    user: RequestUser | User | undefined,
-    file: FileInProgress,
-    albumId ? : number | null
+	user: RequestUser | User | undefined,
+	file: FileInProgress,
+	albumId?: number | null
 ) => {
-    const now = moment.utc().toDate();
+	const now = moment.utc().toDate();
 
-    const data = {
-        userId: user?.id ?? undefined!,
-        uuid: uuidv4(),
-        name: file.name,
-        original: file.original,
-        type: file.type,
-        size: file.size,
-        hash: file.hash,
-        ip: file.ip,
-        sourceUrl: file.sourceUrl ?? null,
-        isS3: file.isS3,
-        isHF: file.isHF,
-        isWatched: file.isWatched,
-        createdAt: now,
-        editedAt: now
-    };
+	const data = {
+		userId: user?.id ?? undefined!,
+		uuid: uuidv4(),
+		name: file.name,
+		original: file.original,
+		type: file.type,
+		size: file.size,
+		hash: file.hash,
+		ip: file.ip,
+		sourceUrl: file.sourceUrl ?? null,
+		isS3: file.isS3,
+		isHF: file.isHF,
+		isWatched: file.isWatched,
+		createdAt: now,
+		editedAt: now
+	};
 
-    if (albumId && albumId !== null && albumId !== undefined) {
-        const fileId = await prisma.files.create({
-            data: {
-                ...data,
-                albums: {
-                    connect: {
-                        id: albumId
-                    }
-                }
-            }
-        });
+	if (albumId && albumId !== null && albumId !== undefined) {
+		const fileId = await prisma.files.create({
+			data: {
+				...data,
+				albums: {
+					connect: {
+						id: albumId
+					}
+				}
+			}
+		});
 
-        return {
-            file: {
-                id: fileId.id,
-                ...data
-            }
-        };
-    } else {
-        const fileId = await prisma.files.create({
-            data
-        });
+		return {
+			file: {
+				id: fileId.id,
+				...data
+			}
+		};
+	} else {
+		const fileId = await prisma.files.create({
+			data
+		});
 
-        return {
-            file: {
-                id: fileId.id,
-                ...data
-            }
-        };
-    }
+		return {
+			file: {
+				id: fileId.id,
+				...data
+			}
+		};
+	}
 };
 
-export const updateFileOnDb = async (user: RequestUser | User | undefined, file: FileInProgress & {
-    uuid: string
-}) => {
-    const now = moment.utc().toDate();
+export const updateFileOnDb = async (
+	user: RequestUser | User | undefined,
+	file: FileInProgress & {
+		uuid: string;
+	}
+) => {
+	const now = moment.utc().toDate();
 
-    const data = {
-        userId: user?.id ?? undefined!,
-        name: file.name,
-        original: file.original,
-        type: file.type,
-        size: file.size,
-        hash: file.hash,
-        ip: file.ip,
-        isS3: file.isS3,
-        isHF: file.isHF,
-        isWatched: file.isWatched,
-        createdAt: now,
-        editedAt: now
-    };
+	const data = {
+		userId: user?.id ?? undefined!,
+		name: file.name,
+		original: file.original,
+		type: file.type,
+		size: file.size,
+		hash: file.hash,
+		ip: file.ip,
+		isS3: file.isS3,
+		isHF: file.isHF,
+		isWatched: file.isWatched,
+		createdAt: now,
+		editedAt: now
+	};
 
-    return prisma.files.update({
-        where: {
-            uuid: file.uuid,
-            isWatched: true
-        },
-        data
-    });
+	return prisma.files.update({
+		where: {
+			uuid: file.uuid,
+			isWatched: true
+		},
+		data
+	});
 };
 
 export const saveFileToAlbum = async (albumId: number, fileId: number) => {
-    const now = moment.utc().toDate();
-    await prisma.files.update({
-        where: {
-            id: fileId
-        },
-        data: {
-            albums: {
-                connect: {
-                    id: albumId
-                }
-            }
-        }
-    });
+	const now = moment.utc().toDate();
+	await prisma.files.update({
+		where: {
+			id: fileId
+		},
+		data: {
+			albums: {
+				connect: {
+					id: albumId
+				}
+			}
+		}
+	});
 
-    await prisma.albums.update({
-        where: {
-            id: albumId
-        },
-        data: {
-            editedAt: now
-        }
-    });
+	await prisma.albums.update({
+		where: {
+			id: albumId
+		},
+		data: {
+			editedAt: now
+		}
+	});
 };
 
 // export const getExtension = (filename: string, lower = false): string => {
@@ -526,119 +499,123 @@ export const saveFileToAlbum = async (albumId: number, fileId: number) => {
 // 	return lower ? str.toLowerCase() : str;
 // };
 
-export const hashFile = async (uploadPath: string): Promise < string > => {
-    const hasher = new Blake3Hasher();
-    const stream = jetpack.createReadStream(uploadPath);
-    return new Promise((resolve, reject) => {
-        stream.on('data', data => {
-            hasher.update(data);
-        });
+export const hashFile = async (uploadPath: string): Promise<string> => {
+	const hasher = new Blake3Hasher();
+	const stream = jetpack.createReadStream(uploadPath);
+	return new Promise((resolve, reject) => {
+		stream.on('data', data => {
+			hasher.update(data);
+		});
 
-        stream.on('end', () => {
-            resolve(hasher.digest('hex'));
-            hasher.reset();
-        });
+		stream.on('end', () => {
+			resolve(hasher.digest('hex'));
+			hasher.reset();
+		});
 
-        stream.on('error', error => {
-            reject(error);
-            hasher.reset();
-        });
-    });
+		stream.on('error', error => {
+			reject(error);
+			hasher.reset();
+		});
+	});
 };
 
 export const handleUploadFile = async ({
-    user,
-    ip,
-    upload,
-    album
+	user,
+	ip,
+	upload,
+	album
 }: {
-    album ? : number | null | undefined;
-    ip: string;
-    upload: {
-        name: string;path: string;size: string;sourceUrl ? : string;type: string
-    };
-    user ? : RequestUser | User | undefined;
+	album?: number | null | undefined;
+	ip: string;
+	upload: {
+		name: string;
+		path: string;
+		size: string;
+		sourceUrl?: string;
+		type: string;
+	};
+	user?: RequestUser | User | undefined;
 }) => {
-    // Assign a unique identifier to the file
-    const uniqueIdentifier = await getUniqueFileIdentifier();
-    if (!uniqueIdentifier) throw new Error('Could not generate unique identifier.');
-    const ext = extname(upload.name);
-    let newFilename = `${uniqueIdentifier}${ext}`;
-    if (SETTINGS.generateOriginalFileNameWithIdentifier) {
-        const isLowerCase = !SETTINGS.enableMixedCaseFilenames || process.platform === 'win32';
-        const originalNameWithoutExt = basename(upload.name, ext);
-        newFilename = `${slugify(originalNameWithoutExt, { separator: '_', lowercase: isLowerCase })}-${uniqueIdentifier}${ext}`;
-    }
+	// Assign a unique identifier to the file
+	const uniqueIdentifier = await getUniqueFileIdentifier();
+	if (!uniqueIdentifier) throw new Error('Could not generate unique identifier.');
+	const ext = extname(upload.name);
+	let newFilename = `${uniqueIdentifier}${ext}`;
+	if (SETTINGS.generateOriginalFileNameWithIdentifier) {
+		const isLowerCase = !SETTINGS.enableMixedCaseFilenames || process.platform === 'win32';
+		const originalNameWithoutExt = basename(upload.name, ext);
+		newFilename = `${slugify(originalNameWithoutExt, { separator: '_', lowercase: isLowerCase })}-${uniqueIdentifier}${ext}`;
+	}
 
-    log.debug(`> Name for upload: ${newFilename}`);
+	log.debug(`> Name for upload: ${newFilename}`);
 
-    // Move file to permanent location
-    const newPath = fileURLToPath(new URL(`../../../../uploads/${newFilename}`, import.meta.url));
-    const file = {
-        name: newFilename,
-        extension: ext,
-        path: newPath,
-        original: upload.name,
-        type: upload.type,
-        size: upload.size,
-        hash: await hashFile(upload.path),
-        ip,
-        sourceUrl: upload.sourceUrl,
-        isS3: false,
-        isHF: Boolean(SETTINGS.useHFStorage),
-        isWatched: false
-    };
+	// Move file to permanent location
+	const newPath = fileURLToPath(new URL(`../../../../uploads/${newFilename}`, import.meta.url));
+	const file = {
+		name: newFilename,
+		extension: ext,
+		path: newPath,
+		original: upload.name,
+		type: upload.type,
+		size: upload.size,
+		hash: await hashFile(upload.path),
+		ip,
+		sourceUrl: upload.sourceUrl,
+		isS3: false,
+		isHF: Boolean(SETTINGS.useHFStorage),
+		isWatched: false
+	};
 
-    let uploadedFile;
-    const fileOnDb = await checkFileHashOnDB(user, file);
-    if (fileOnDb?.repeated) {
-        if (SETTINGS.saveDuplicatesToAlbum && album) {
-            await saveFileToAlbum(album, fileOnDb.file.id);
-        } else {
-            log.info(
-                `> Tried uploading ${file.original} but already exists on database with identifier: ${fileOnDb.file.name}. Consider enabling "Add duplicates to Album"`
-            );
-        }
+	let uploadedFile;
+	const fileOnDb = await checkFileHashOnDB(user, file);
+	if (fileOnDb?.repeated) {
+		if (SETTINGS.saveDuplicatesToAlbum && album) {
+			await saveFileToAlbum(album, fileOnDb.file.id);
+		} else {
+			log.info(
+				`> Tried uploading ${file.original} but already exists on database with identifier: ${fileOnDb.file.name}. Consider enabling "Add duplicates to Album"`
+			);
+		}
 
-        uploadedFile = fileOnDb.file;
-        await deleteTmpFile(upload.path);
-    } else {
-        if (SETTINGS.useHFStorage) {
-            const fileBuffer = await jetpack.readAsync(upload.path, 'buffer');
-            if (fileBuffer) {
-                try {
-                    const hfUploadUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/files/${newFilename}`;
-                    const res = await fetch(hfUploadUrl, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${SETTINGS.HFToken}`,
-                            'Content-Type': upload.type
-                        },
-                        body: fileBuffer
-                    });
-                    if (!res.ok) {
-                        log.error(`Failed to upload to HF Bucket: ${await res.text()}`);
-                        throw new Error('Failed to upload to HF Bucket');
-                    }
-                } catch (e) {
-                    log.error(e);
-                    throw new Error('Failed to upload to HF Bucket');
-                }
-            }
-            await deleteTmpFile(upload.path);
-        } else {
-            await jetpack.moveAsync(upload.path, newPath);
-        }
+		uploadedFile = fileOnDb.file;
+		await deleteTmpFile(upload.path);
+	} else {
+		if (SETTINGS.useHFStorage) {
+			const fileBuffer = await jetpack.readAsync(upload.path, 'buffer');
+			if (fileBuffer) {
+				try {
+					const hfUploadUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/files/${newFilename}`;
+					const res = await fetch(hfUploadUrl, {
+						method: 'PUT',
+						headers: {
+							Authorization: `Bearer ${SETTINGS.HFToken}`,
+							'Content-Type': upload.type
+						},
+						body: fileBuffer
+					});
+					if (!res.ok) {
+						log.error(`Failed to upload to HF Bucket: ${await res.text()}`);
+						throw new Error('Failed to upload to HF Bucket');
+					}
+				} catch (e) {
+					log.error(e);
+					throw new Error('Failed to upload to HF Bucket');
+				}
+			}
+			await deleteTmpFile(upload.path);
+		} else {
+			await jetpack.moveAsync(upload.path, newPath);
+		}
 
-        const savedFile = await storeFileToDb(user ? user : undefined, file, album ? album : undefined);
-        uploadedFile = savedFile.file;
+		const savedFile = await storeFileToDb(user ? user : undefined, file, album ? album : undefined);
+		uploadedFile = savedFile.file;
 
-        void generateThumbnails({
-            filename: savedFile.file.name,
-            tmp: savedFile.file.isS3 || savedFile.file.isHF,
-            watched: savedFile.file.isWatched
-        });
-    }
+		void generateThumbnails({
+			filename: savedFile.file.name,
+			tmp: savedFile.file.isS3 || savedFile.file.isHF,
+			watched: savedFile.file.isWatched
+		});
+	}
 
-    return uploadedFile;
+	return uploadedFile;
 };

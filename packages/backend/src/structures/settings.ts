@@ -26,7 +26,7 @@ export const loadSettings = async (force = false) => {
 		log.debug('Settings already exist in database, skipping creation...');
 
 		// These settings should be set from the environment variables
-		SETTINGS.port = Number.isNaN(Number(process.env.PORT)) ? 8000 : Number(process.env.PORT) ?? 8000;
+		SETTINGS.port = Number.isNaN(Number(process.env.PORT)) ? 8000 : (Number(process.env.PORT) ?? 8000);
 		SETTINGS.host = process.env.HOST ?? 'localhost';
 
 		// These are static for now

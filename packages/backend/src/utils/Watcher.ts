@@ -47,6 +47,7 @@ export const fileWatcher = () => {
 			// @ts-ignore
 			ip: '127.0.0.1',
 			isS3: false,
+			isHF: false,
 			isWatched: true
 		};
 

@@ -34,7 +34,7 @@ export const useUploadFile = ({ albumUuid }: { readonly albumUuid?: string | und
 				method,
 				maxFileSize: settings?.maxSize ?? 0,
 				// If we're storing in s3, we don't want to chunk the file
-				chunkSize: isNetworkStored ? settings?.maxSize ?? 0 : settings?.chunkSize ?? 0,
+				chunkSize: isNetworkStored ? (settings?.maxSize ?? 0) : (settings?.chunkSize ?? 0),
 				autoStart: true,
 				maxParallelUploads: 1
 			};
@@ -44,10 +44,9 @@ export const useUploadFile = ({ albumUuid }: { readonly albumUuid?: string | und
 					'Content-Type': file.type
 				};
 
-				if(endpoint.includes("digitaloceanspaces.com")){
-					options.headers["x-amz-acl"] = "public-read";
+				if (endpoint.includes('digitaloceanspaces.com')) {
+					options.headers['x-amz-acl'] = 'public-read';
 				}
-        
 			} else {
 				options.postParams = {
 					name: file.name,

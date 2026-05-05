@@ -56,10 +56,15 @@ export const options = {
 };
 
 export const run = async (req: FastifyRequest, res: FastifyReply) => {
-	const { identifier } = req.params as { identifier: string };
+	const { identifier } = req.params as {
+		identifier: string;
+	};
 
 	// Set up pagination options
-	const { page = 1, limit = 50 } = req.query as { limit?: number; page?: number };
+	const { page = 1, limit = 50 } = req.query as {
+		limit?: number;
+		page?: number;
+	};
 	const options = {
 		take: limit,
 		skip: (page - 1) * limit
@@ -115,8 +120,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 					original: true,
 					type: true,
 					isS3: true,
-		isHF: true,
-	isHF: true,
+					isHF: true,
 					isWatched: true,
 					uuid: true
 				},
@@ -153,7 +157,13 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 		const { isWatched, isS3, ...modifiedFile } = file;
 		files.push({
 			...modifiedFile,
-			...constructFilePublicLink({ req, fileName: modifiedFile.name, isS3, isHF: file.isHF, isWatched })
+			...constructFilePublicLink({
+				req,
+				fileName: modifiedFile.name,
+				isS3,
+				isHF: file.isHF,
+				isWatched
+			})
 		});
 	}
 

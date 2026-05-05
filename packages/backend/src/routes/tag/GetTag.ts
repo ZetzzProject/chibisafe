@@ -70,8 +70,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 					type: true,
 					uuid: true,
 					isS3: true,
-		isHF: true,
-	isHF: true,
+					isHF: true,
 					isWatched: true
 				},
 				orderBy: {
@@ -97,7 +96,8 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			...constructFilePublicLink({
 				req,
 				fileName: modifiedFile.name,
-				isS3: modifiedFile.isS3, isHF: modifiedFile.isHF,
+				isS3: modifiedFile.isS3,
+				isHF: modifiedFile.isHF,
 				isWatched: file.isWatched
 			})
 		});

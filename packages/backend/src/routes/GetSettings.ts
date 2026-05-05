@@ -22,7 +22,11 @@ export const schema = {
 			userAccounts: z.boolean().describe('Whether or not user accounts are enabled.'),
 			blockedExtensions: z.array(z.string()).describe('The list of blocked extensions.'),
 			useNetworkStorage: z.boolean().describe('Whether or not network storage is enabled.'),
-			UseHFStorage: z.boolean().describe('Whether or not to use Hugging Face Buckets (experimental). Overrides S3 if both are enabled.'), // maybe error? idk
+			useHFStorage: z
+				.boolean()
+				.describe(
+					'Whether or not to use Hugging Face Buckets (experimental). Overrides S3 if both are enabled.'
+				), // maybe error? idk
 			useMinimalHomepage: z
 				.boolean()
 				.optional()
@@ -38,7 +42,10 @@ export const schema = {
 				.optional()
 				.describe('Whether or not the terms of service page is enabled.'),
 			rulesPageContent: z.boolean().optional().describe('Whether or not the rules page is enabled.'),
-			saveDuplicatesToAlbum: z.boolean().optional().describe('Whether or not to attach an already existing file to an album when uploaded again.')
+			saveDuplicatesToAlbum: z
+				.boolean()
+				.optional()
+				.describe('Whether or not to attach an already existing file to an album when uploaded again.')
 		})
 	}
 };

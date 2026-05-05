@@ -8,6 +8,7 @@
 [![Support me](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-yellow.svg?style=flat-square)](https://www.buymeacoffee.com/kana)
 
 ## What is Chibisafe?
+
 Chibisafe is a file uploader service written in typescript that just works. It's easy to use, easy to deploy, free and open source. It accepts files, photos, documents, anything you imagine and gives you back a shareable link for you to send to others.
 
 You can run it in public mode, user accounts mode or invite-only mode. Big files are automatically chunked to minimize network failure and users can create an API key to use the service programatically and hook it to other things.
@@ -17,11 +18,13 @@ The service also comes with a dashboard where you can edit almost every configur
 _If you fork/deploy your own instance it would mean a lot if you were to keep either the GitHub logo to our repo or a link to it 💖_
 
 ---
+
 <p align="center">
 	<img src="https://repobeats.axiom.co/api/embed/ef349e2a33281ebd0e289a666892597deb08ee1a.svg">
 </p>
 
 ### Features of v6 aka Holo
+
 - 📄 [Beautiful docs](https://chibisafe.app)
 - 🗄️ [S3 Storage Support](https://github.com/chibisafe/chibisafe/blob/master/docs/s3.md)
 - 📷 Beautiful masonry to browse media files
@@ -40,9 +43,9 @@ _If you fork/deploy your own instance it would mean a lot if you were to keep ei
 - 📖 Open source
 - 🚫 No ads and no tracking (except for IP logging of requests)
 
-
 ## Installing and running chibisafe
-Whichever method you choose to install chibisafe keep in mind that the installation process creates an account named `admin` with the same password. Once you log in the first time make sure to change it! Also we ***highly*** recommend using docker for chibisafe.
+
+Whichever method you choose to install chibisafe keep in mind that the installation process creates an account named `admin` with the same password. Once you log in the first time make sure to change it! Also we **_highly_** recommend using docker for chibisafe.
 
 - [Running chibisafe with Docker](https://chibisafe.app/docs/installation/running-with-docker)
 - [Running chibisafe manually](https://chibisafe.app/docs/installation/running-manually)
@@ -55,12 +58,14 @@ For more guides and how to set up different aspects of the service [please refer
 ### v5 to v6
 
 If you come from v5 you might be used to chibisafe exposing 1 single port for you to reverse proxy into nginx/caddy/apache. Starting from v6 this is also the case (although port is now 24424) as long as you run the configuration we provide with docker. Other than configuring your reverse proxy accordingly, all you need to do to migrate is to copy both the `uploads/` and `database/` folders into your new instance folder. Once chibisafe starts it will apply the necessary migrations automatically.
+
 </details>
 
 > [!CAUTION]
 > Migrating from an older version than v5 to v6 is not possible, so we recommend setting up a new instance instead.
 
 ### Screenshots
+
 <p align="center">
 	
 ![msedge_AjPLFovUHQ](https://github.com/chibisafe/chibisafe/assets/7425261/84a8f980-ae11-4f7d-b26c-e8b4e8d8d9f8)
