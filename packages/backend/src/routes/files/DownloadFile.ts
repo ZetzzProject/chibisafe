@@ -29,7 +29,9 @@ export const options = {
 };
 
 export const run = async (req: FastifyRequest, res: FastifyReply) => {
-	const { uuid } = req.params as { uuid: string };
+	const { uuid } = req.params as {
+		uuid: string;
+	};
 
 	// Make sure the file exists
 	const file = await prisma.files.findFirst({
@@ -40,8 +42,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 			name: true,
 			original: true,
 			isS3: true,
-		isHF: true
-	isHF: true,
+			isHF: true
 		}
 	});
 
@@ -51,11 +52,21 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 	}
 
 	if (file.isS3) {
-		const link = constructFilePublicLink({ req, fileName: file.name, isS3: file.isS3, isHF: file.isHF, isHF: file.isHF });
+		const link = constructFilePublicLink({
+			req,
+			fileName: file.name,
+			isS3: file.isS3,
+			isHF: file.isHF
+		});
 		return res.redirect(link.url);
 	}
 
 	const uploadPath = fileURLToPath(new URL('../../../../../uploads', import.meta.url));
 	const filePath = createReadStream(`${uploadPath}/${file.name}`);
-	return res.header('content-disposition', `attachment; filename="${file.name}"; filename*=UTF-8''${encodeURIComponent(file.original)}`).send(filePath);
+	return res
+		.header(
+			'content-disposition',
+			`attachment; filename="${file.name}"; filename*=UTF-8''${encodeURIComponent(file.original)}`
+		)
+		.send(filePath);
 };

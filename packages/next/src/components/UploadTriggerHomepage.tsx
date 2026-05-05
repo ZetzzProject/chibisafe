@@ -112,76 +112,75 @@ export const UploadTriggerHomepage = ({ settings }: { readonly settings: Setting
 		</div>
 	) : (
 		<>
-		<UploadTrigger allowsMultiple albumUuid={uploadAlbumUuid ?? ''}>
-			<div className="flex flex-col items-center justify-center sm:w-3/6 h-40 w-full">
-				<div
-					className={cn(
-						buttonVariants({ variant: 'outline' }),
-						'relative h-full w-full transition-colors flex flex-col justify-center items-center bg-background-transparent'
+			<UploadTrigger allowsMultiple albumUuid={uploadAlbumUuid ?? ''}>
+				<div className="flex flex-col items-center justify-center sm:w-3/6 h-40 w-full">
+					<div
+						className={cn(
+							buttonVariants({ variant: 'outline' }),
+							'relative h-full w-full transition-colors flex flex-col justify-center items-center bg-background-transparent'
+						)}
+					>
+						<label className="flex flex-col items-center justify-center w-full cursor-pointer">
+							<Button className="flex flex-col items-center justify-center pt-5 pb-6 px-4">
+								<UploadCloudIcon className="h-10 w-10" />
+								<p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+									<span className="font-semibold">Click to upload</span> or drag and drop anywhere
+								</p>
+								<p className="text-xs text-gray-500 dark:text-gray-400">
+									{formatBytes(settings?.maxSize ?? 0)} max per file
+								</p>
+							</Button>
+						</label>
+					</div>
+					{isLoggedIn && (
+						<div className="-translate-y-5 bg-secondary rounded-lg">
+							<Combobox
+								data={albums.map(album => ({
+									value: album.uuid,
+									label: album.name
+								}))}
+								onSelected={uuid => {
+									setUploadAlbumUuid(uuid || null);
+								}}
+								placeholder="Select album..."
+								createNewLabel="Create new album"
+								onCreateNew={() => setIsCreateDialogOpen(true)}
+								selectedValue={uploadAlbumUuid ?? ''}
+							/>
+						</div>
 					)}
-				>
-					<label className="flex flex-col items-center justify-center w-full cursor-pointer">
-						<Button className="flex flex-col items-center justify-center pt-5 pb-6 px-4">
-							<UploadCloudIcon className="h-10 w-10" />
-							<p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
-								<span className="font-semibold">Click to upload</span> or drag and drop anywhere
-							</p>
-							<p className="text-xs text-gray-500 dark:text-gray-400">
-								{formatBytes(settings?.maxSize ?? 0)} max per file
-							</p>
-						</Button>
-					</label>
 				</div>
-				{isLoggedIn && (
-					<div className="-translate-y-5 bg-secondary rounded-lg">
-						<Combobox
-							data={albums.map(album => ({
-								value: album.uuid,
-								label: album.name
-							}))}
-							onSelected={uuid => {
-								setUploadAlbumUuid(uuid || null);
-							}}
-							placeholder="Select album..."
-							createNewLabel="Create new album"
-							onCreateNew={() => setIsCreateDialogOpen(true)}
-							selectedValue={uploadAlbumUuid ?? ''}
-						/>
-					</div>
-				)}
-			</div>
+			</UploadTrigger>
 
-		</UploadTrigger>
-
-		<Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-			<DialogContent className="w-11/12 sm:max-w-md">
-				<DialogHeader>
-					<DialogTitle>Create new album</DialogTitle>
-					<DialogDescription>Enter a name for your new album</DialogDescription>
-				</DialogHeader>
-				<div className="grid gap-4 py-4">
-					<div className="grid grid-cols-4 items-center gap-4">
-						<Label htmlFor="albumName" className="text-right">
-							Name
-						</Label>
-						<Input
-							id="albumName"
-							value={newAlbumName}
-							onChange={e => setNewAlbumName(e.target.value)}
-							onKeyDown={handleKeyDown}
-							placeholder="Album name"
-							className="col-span-3"
-							autoFocus
-						/>
+			<Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+				<DialogContent className="w-11/12 sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>Create new album</DialogTitle>
+						<DialogDescription>Enter a name for your new album</DialogDescription>
+					</DialogHeader>
+					<div className="grid gap-4 py-4">
+						<div className="grid grid-cols-4 items-center gap-4">
+							<Label htmlFor="albumName" className="text-right">
+								Name
+							</Label>
+							<Input
+								id="albumName"
+								value={newAlbumName}
+								onChange={e => setNewAlbumName(e.target.value)}
+								onKeyDown={handleKeyDown}
+								placeholder="Album name"
+								className="col-span-3"
+								autoFocus
+							/>
+						</div>
 					</div>
-				</div>
-				<DialogFooter>
-					<ShadcnButton onClick={() => void handleCreateAlbum()} disabled={isCreating}>
-						{isCreating ? 'Creating...' : 'Create'}
-					</ShadcnButton>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+					<DialogFooter>
+						<ShadcnButton onClick={() => void handleCreateAlbum()} disabled={isCreating}>
+							{isCreating ? 'Creating...' : 'Create'}
+						</ShadcnButton>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 };

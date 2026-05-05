@@ -104,7 +104,6 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		ip: req.ip,
 		isS3: true,
 		isHF: true,
-	isHF: true,
 		isWatched: false,
 		sourceUrl
 	};
@@ -152,9 +151,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		}
 	}
 
-	const linkData = constructFilePublicLink({ req, fileName: uploadedFile.name, isS3: true,
-		isHF: true
-	isHF: true, });
+	const linkData = constructFilePublicLink({ req, fileName: uploadedFile.name, isS3: true, isHF: true });
 	// Construct public link
 	const fileWithLink = {
 		...uploadedFile,

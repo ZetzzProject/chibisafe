@@ -93,8 +93,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 				}
 			},
 			isS3: true,
-		isHF: true,
-	isHF: true,
+			isHF: true,
 			isWatched: true,
 			user: {
 				select: {
@@ -119,7 +118,13 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 	for (const file of files) {
 		readyFiles.push({
 			...file,
-			...constructFilePublicLink({ req, fileName: file.name, isS3: file.isS3, isHF: file.isHF, isHF: file.isHF, isWatched: file.isWatched })
+			...constructFilePublicLink({
+				req,
+				fileName: file.name,
+				isS3: file.isS3,
+				isHF: file.isHF,
+				isWatched: file.isWatched
+			})
 		});
 	}
 

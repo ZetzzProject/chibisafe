@@ -55,8 +55,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			quarantine: true,
 			quarantineFile: true,
 			isS3: true,
-		isHF: true,
-	isHF: true,
+			isHF: true,
 			isWatched: true
 		}
 	});
@@ -108,7 +107,11 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			);
 		}
 
-		void generateThumbnails({ filename: file.name, tmp: file.isS3, watched: file.isWatched });
+		void generateThumbnails({
+			filename: file.name,
+			tmp: file.isS3,
+			watched: file.isWatched
+		});
 	}
 
 	return res.send({

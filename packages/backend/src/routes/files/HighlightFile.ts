@@ -44,7 +44,9 @@ export const options = {
 };
 
 export const run = async (req: RequestWithUser, res: FastifyReply) => {
-	const { uuid } = req.params as { uuid: string };
+	const { uuid } = req.params as {
+		uuid: string;
+	};
 
 	const file = (await prisma.files.findFirst({
 		where: {
@@ -53,8 +55,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		select: {
 			name: true,
 			isS3: true,
-		isHF: true,
-	isHF: true,
+			isHF: true,
 			size: true,
 			type: true
 		}
