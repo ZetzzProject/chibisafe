@@ -41,6 +41,7 @@ export interface FileInProgress {
 	hash: string;
 	ip: string;
 	isS3: boolean;
+	isHF: boolean;
 	isWatched: boolean;
 	name: string;
 	original: string;
@@ -56,6 +57,7 @@ export interface File {
 	hash: string;
 	ip: string;
 	isS3: boolean;
+	isHF: boolean;
 	isWatched: boolean;
 	name: string;
 	original: string;
@@ -151,6 +153,9 @@ export interface Settings {
 	termsOfServicePageContent: string;
 	updateCheckCron: string;
 	useNetworkStorage: boolean;
+	useHFStorage: boolean;
+	HFToken: string;
+	HFBucket: string;
 	useUrlShortener: boolean;
 	userAccounts: boolean;
 	usersStorageQuota: number;

@@ -40,6 +40,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 			name: true,
 			original: true,
 			isS3: true
+	isHF: true,
 		}
 	});
 
@@ -49,7 +50,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 	}
 
 	if (file.isS3) {
-		const link = constructFilePublicLink({ req, fileName: file.name, isS3: file.isS3 });
+		const link = constructFilePublicLink({ req, fileName: file.name, isS3: file.isS3, isHF: file.isHF });
 		return res.redirect(link.url);
 	}
 

@@ -132,7 +132,8 @@ export const uploadToNetworkStorage = async (req: RequestWithUser, res: FastifyR
 };
 
 export const run = async (req: RequestWithUser, res: FastifyReply) => {
-	if (SETTINGS.useNetworkStorage) return uploadToNetworkStorage(req, res);
+    // Ignore network upload if HF is enabled, because we handle HF locally in proxy logic
+	if (SETTINGS.useNetworkStorage && !SETTINGS.useHFStorage) return uploadToNetworkStorage(req, res);
 
 	const tmpDir = fileURLToPath(new URL('../../../../../uploads/tmp', import.meta.url));
 	const maxChunkSize = SETTINGS.chunkSize;

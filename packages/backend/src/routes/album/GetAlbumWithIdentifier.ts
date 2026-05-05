@@ -115,6 +115,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 					original: true,
 					type: true,
 					isS3: true,
+	isHF: true,
 					isWatched: true,
 					uuid: true
 				},
@@ -151,7 +152,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 		const { isWatched, isS3, ...modifiedFile } = file;
 		files.push({
 			...modifiedFile,
-			...constructFilePublicLink({ req, fileName: modifiedFile.name, isS3, isWatched })
+			...constructFilePublicLink({ req, fileName: modifiedFile.name, isS3, isHF: file.isHF, isWatched })
 		});
 	}
 

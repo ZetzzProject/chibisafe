@@ -78,6 +78,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 				}
 			},
 			isS3: true,
+	isHF: true,
 			isWatched: true
 		},
 		orderBy: {

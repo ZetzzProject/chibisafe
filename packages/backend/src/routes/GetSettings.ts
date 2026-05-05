@@ -22,6 +22,7 @@ export const schema = {
 			userAccounts: z.boolean().describe('Whether or not user accounts are enabled.'),
 			blockedExtensions: z.array(z.string()).describe('The list of blocked extensions.'),
 			useNetworkStorage: z.boolean().describe('Whether or not network storage is enabled.'),
+			UseHFStorage: z.boolean().describe('Whether or not to use Hugging Face Buckets (experimental). Overrides S3 if both are enabled.'), // maybe error? idk
 			useMinimalHomepage: z
 				.boolean()
 				.optional()
@@ -62,6 +63,7 @@ export const run = (_: RequestWithUser, res: FastifyReply) => {
 		userAccounts: SETTINGS.userAccounts,
 		blockedExtensions: SETTINGS.blockedExtensions,
 		useNetworkStorage: SETTINGS.useNetworkStorage,
+		useHFStorage: SETTINGS.useHFStorage,
 		useMinimalHomepage: SETTINGS.useMinimalHomepage,
 		serveUploadsFrom: SETTINGS.serveUploadsFrom,
 		useUrlShortener: SETTINGS.useUrlShortener,
