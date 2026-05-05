@@ -50,6 +50,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		select: {
 			name: true,
 			isS3: true,
+		isHF: true,
 	isHF: true,
 			isWatched: true,
 			size: true

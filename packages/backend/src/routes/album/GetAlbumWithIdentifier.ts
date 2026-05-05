@@ -115,6 +115,7 @@ export const run = async (req: FastifyRequest, res: FastifyReply) => {
 					original: true,
 					type: true,
 					isS3: true,
+		isHF: true,
 	isHF: true,
 					isWatched: true,
 					uuid: true
