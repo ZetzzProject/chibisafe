@@ -81,6 +81,54 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 
 		await S3Client.send(copyCommand);
 		await S3Client.send(removeCommand);
+	} else if (file.isHF) {
+		const quarantineKey = `quarantine/${file.quarantineFile!.name}`;
+		
+		const pathsInfoUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/paths-info`;
+		const pathsInfoRes = await fetch(pathsInfoUrl, {
+			method: 'POST',
+			headers: {
+				'Authorization': `Bearer ${SETTINGS.HFToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ paths: [quarantineKey] })
+		});
+
+		if (!pathsInfoRes.ok) {
+			req.log.error(`Failed to fetch HF path info: ${await pathsInfoRes.text()}`);
+			void res.internalServerError('Failed to fetch HF path info');
+			return;
+		}
+
+		const pathsInfo = await pathsInfoRes.json();
+		const xetHash = pathsInfo[0]?.xet_hash;
+
+		if (!xetHash) {
+			req.log.error('Could not find xet_hash for HF file');
+			void res.internalServerError('Could not find xet_hash for HF file');
+			return;
+		}
+		const hfBatchUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
+		const batchRes = await fetch(hfBatchUrl, {
+			method: 'POST',
+			headers: {
+				'Authorization': `Bearer ${SETTINGS.HFToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				// Format: ["bucket", "source_bucket_id", "xet_hash", "destination_path"]
+				copy: [
+					["bucket", SETTINGS.HFBucket, xetHash, file.name]
+				],
+				delete: [quarantineKey]
+			})
+		});
+
+		if (!batchRes.ok) {
+			req.log.error(`Failed to allow HF file: ${await batchRes.text()}`);
+			void res.internalServerError('Failed to allow HF file');
+			return;
+		}
 	}
 
 	await prisma.files.update({

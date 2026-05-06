@@ -79,6 +79,21 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 
 		await S3Client.send(copyCommand);
 		await S3Client.send(removeCommand);
+	} else if (file.isHF) {
+			const hfBatchUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
+			await fetch(hfBatchUrl, {
+				method: 'POST',
+				headers: {
+					'Authorization': `Bearer ${SETTINGS.HFToken}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					copy: [
+						["bucket", SETTINGS.HFBucket, "", `quarantine/${newFileName}`, file.name]
+					],
+					delete: [file.name]
+				})
+			});
 	}
 
 	await prisma.files.update({

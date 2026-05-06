@@ -86,9 +86,7 @@ export const deleteFiles = async ({
 		isWatched: boolean;
 		name: string;
 		quarantine: boolean;
-		quarantineFile: {
-			name: string;
-		} | null;
+		quarantineFile: { name: string } | null;
 		uuid: string;
 	}[];
 }) => {
@@ -105,7 +103,7 @@ export const deleteFiles = async ({
 				Bucket: SETTINGS.S3Bucket,
 				Delete: {
 					Objects: s3Files.map(file => ({
-						Key: file.quarantine ? (`quarantine/${file.quarantineFile?.name}` ?? file.name) : file.name
+						Key: file.quarantine ? `quarantine/${file.quarantineFile?.name}` ?? file.name : file.name
 					})),
 					Quiet: true
 				}
@@ -113,18 +111,21 @@ export const deleteFiles = async ({
 
 			await S3Client.send(command);
 		}
+
 		if (hfFiles.length) {
-			for (const file of hfFiles) {
-				const key = file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name;
-				const hfDeleteUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/files/${key}`;
-				await fetch(hfDeleteUrl, {
-					method: 'DELETE',
-					headers: {
-						Authorization: `Bearer ${SETTINGS.HFToken}`
-					}
-				}).catch(e => log.error(`Failed to delete HF file: ${file.name} - ${e.message}`));
-			}
+			const hfDeleteUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
+			await fetch(hfDeleteUrl, {
+				method: 'POST',
+				headers: { 
+					'Authorization': `Bearer ${SETTINGS.HFToken}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					delete: hfFiles.map(file => file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name)
+				})
+			}).catch(e => log.error(`Failed to delete HF files: ${e.message}`));
 		}
+
 		if (localFiles.length) {
 			for (const file of localFiles) {
 				if (file.quarantine) {
@@ -144,7 +145,7 @@ export const deleteFiles = async ({
 				await jetpack.removeAsync(
 					path.join(
 						file.quarantine ? quarantinePath : file.isWatched ? watchPath : uploadPath,
-						file.quarantine ? (file.quarantineFile?.name ?? file.name) : file.name
+						file.quarantine ? file.quarantineFile?.name ?? file.name : file.name
 					)
 				);
 			}
@@ -285,10 +286,11 @@ export const constructFilePublicLink = ({
 	if (isS3) {
 		url = `${SETTINGS.S3PublicUrl || SETTINGS.S3Endpoint}${quarantine ? '/quarantine' : ''}/${fileName}`;
 	} else if (isHF) {
-		url = `https://huggingface.co/buckets/${SETTINGS.HFBucket}/resolve/main/${quarantine ? 'quarantine/' : ''}${fileName}`;
+		url = `https://huggingface.co/resolve/buckets/${SETTINGS.HFBucket}/${quarantine ? 'quarantine/' : ''}${fileName}`;
 	}
+
 	const data = {
-		url: url,
+		url,
 		thumb: '',
 		preview: ''
 	};
@@ -527,13 +529,7 @@ export const handleUploadFile = async ({
 }: {
 	album?: number | null | undefined;
 	ip: string;
-	upload: {
-		name: string;
-		path: string;
-		size: string;
-		sourceUrl?: string;
-		type: string;
-	};
+	upload: { name: string; path: string; size: string; sourceUrl?: string; type: string };
 	user?: RequestUser | User | undefined;
 }) => {
 	// Assign a unique identifier to the file
@@ -549,7 +545,6 @@ export const handleUploadFile = async ({
 
 	log.debug(`> Name for upload: ${newFilename}`);
 
-	// Move file to permanent location
 	const newPath = fileURLToPath(new URL(`../../../../uploads/${newFilename}`, import.meta.url));
 	const file = {
 		name: newFilename,
@@ -584,15 +579,21 @@ export const handleUploadFile = async ({
 			const fileBuffer = await jetpack.readAsync(upload.path, 'buffer');
 			if (fileBuffer) {
 				try {
-					const hfUploadUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/files/${newFilename}`;
+					const hfUploadUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
+					const formData = new FormData();
+					
+					const blob = new Blob([fileBuffer], { type: upload.type });
+					formData.append('add', blob, newFilename);
+					formData.append('json', JSON.stringify({ add: [[newFilename]] }));
+
 					const res = await fetch(hfUploadUrl, {
-						method: 'PUT',
+						method: 'POST',
 						headers: {
-							Authorization: `Bearer ${SETTINGS.HFToken}`,
-							'Content-Type': upload.type
+							'Authorization': `Bearer ${SETTINGS.HFToken}`
 						},
-						body: fileBuffer
+						body: formData
 					});
+					
 					if (!res.ok) {
 						log.error(`Failed to upload to HF Bucket: ${await res.text()}`);
 						throw new Error('Failed to upload to HF Bucket');
@@ -608,8 +609,9 @@ export const handleUploadFile = async ({
 		}
 
 		const savedFile = await storeFileToDb(user ? user : undefined, file, album ? album : undefined);
-		uploadedFile = savedFile.file;
 
+		uploadedFile = savedFile.file;
+		
 		void generateThumbnails({
 			filename: savedFile.file.name,
 			tmp: savedFile.file.isS3 || savedFile.file.isHF,
