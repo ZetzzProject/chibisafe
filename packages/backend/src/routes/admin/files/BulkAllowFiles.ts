@@ -11,6 +11,7 @@ import { responseMessageSchema } from '@/structures/schemas/ResponseMessage.js';
 import { SETTINGS } from '@/structures/settings.js';
 import { quarantinePath, uploadPath } from '@/utils/File.js';
 import { generateThumbnails } from '@/utils/Thumbnails.js';
+import { HuggingFaceBucketsClient } from '@/utils/HuggingFace.js'
 
 export const schema = {
 	summary: 'Unquarantine files',
@@ -86,6 +87,22 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 
 			await S3Client.send(copyCommand);
 			await S3Client.send(removeCommand);
+		} else if (file.isHF) {
+			const hfClient = new HuggingFaceBucketsClient(SETTINGS.HFToken);
+			const quarantineKey = `quarantine/${file.quarantineFile!.name}`;
+			
+			const pathsInfo = await hfClient.getPathsInfo(SETTINGS.HFBucket, [quarantineKey]);
+			const xetHash = pathsInfo[0]?.xet_hash;
+
+			if (xetHash) {
+				await hfClient.copyFiles(SETTINGS.HFBucket,[{
+					sourceRepoType: 'bucket',
+					sourceRepoId: SETTINGS.HFBucket,
+					xetHash,
+					destination: file.name
+				}]);
+				await hfClient.deleteFiles(SETTINGS.HFBucket, [quarantineKey]);
+			}
 		}
 
 		await prisma.files.update({

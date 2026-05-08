@@ -10,6 +10,7 @@ import { http5xxErrorSchema } from '@/structures/schemas/HTTP5xxError.js';
 import { SETTINGS } from '@/structures/settings.js';
 import { quarantinePath, uploadPath } from '@/utils/File.js';
 import { generateThumbnails } from '@/utils/Thumbnails.js';
+import { HuggingFaceBucketsClient } from '@/utils/HuggingFace.js'
 
 export const schema = {
 	summary: 'Unquarantine file',
@@ -82,51 +83,23 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		await S3Client.send(copyCommand);
 		await S3Client.send(removeCommand);
 	} else if (file.isHF) {
+		const hfClient = new HuggingFaceBucketsClient(SETTINGS.HFToken);
 		const quarantineKey = `quarantine/${file.quarantineFile!.name}`;
 		
-		const pathsInfoUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/paths-info`;
-		const pathsInfoRes = await fetch(pathsInfoUrl, {
-			method: 'POST',
-			headers: {
-				'Authorization': `Bearer ${SETTINGS.HFToken}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ paths: [quarantineKey] })
-		});
-
-		if (!pathsInfoRes.ok) {
-			req.log.error(`Failed to fetch HF path info: ${await pathsInfoRes.text()}`);
-			void res.internalServerError('Failed to fetch HF path info');
-			return;
-		}
-
-		const pathsInfo = await pathsInfoRes.json();
+		const pathsInfo = await hfClient.getPathsInfo(SETTINGS.HFBucket, [quarantineKey]);
 		const xetHash = pathsInfo[0]?.xet_hash;
 
-		if (!xetHash) {
+		if (xetHash) {
+			await hfClient.copyFiles(SETTINGS.HFBucket,[{
+				sourceRepoType: 'bucket',
+				sourceRepoId: SETTINGS.HFBucket,
+				xetHash,
+				destination: file.name
+			}]);
+			await hfClient.deleteFiles(SETTINGS.HFBucket, [quarantineKey]);
+		} else {
 			req.log.error('Could not find xet_hash for HF file');
 			void res.internalServerError('Could not find xet_hash for HF file');
-			return;
-		}
-		const hfBatchUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
-		const batchRes = await fetch(hfBatchUrl, {
-			method: 'POST',
-			headers: {
-				'Authorization': `Bearer ${SETTINGS.HFToken}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				// Format: ["bucket", "source_bucket_id", "xet_hash", "destination_path"]
-				copy: [
-					["bucket", SETTINGS.HFBucket, xetHash, file.name]
-				],
-				delete: [quarantineKey]
-			})
-		});
-
-		if (!batchRes.ok) {
-			req.log.error(`Failed to allow HF file: ${await batchRes.text()}`);
-			void res.internalServerError('Failed to allow HF file');
 			return;
 		}
 	}

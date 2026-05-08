@@ -16,7 +16,7 @@ import { SETTINGS } from '@/structures/settings.js';
 import { log } from '@/utils/Logger.js';
 import { generateThumbnails, getFileThumbnail, removeThumbs } from './Thumbnails.js';
 import { getHost } from './Util.js';
-
+import { HuggingFaceBucketsClient} from './HuggingFace.js'
 const fileIdentifierMaxTries = 5;
 
 // const preserveExtensions = [
@@ -81,8 +81,8 @@ export const deleteFiles = async ({
 }: {
 	deleteFromDB?: boolean;
 	files: {
-		isS3: boolean;
 		isHF: boolean;
+		isS3: boolean;
 		isWatched: boolean;
 		name: string;
 		quarantine: boolean;
@@ -113,32 +113,19 @@ export const deleteFiles = async ({
 		}
 
 		if (hfFiles.length) {
-			const hfDeleteUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
-			await fetch(hfDeleteUrl, {
-				method: 'POST',
-				headers: { 
-					'Authorization': `Bearer ${SETTINGS.HFToken}`,
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					delete: hfFiles.map(file => file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name)
-				})
-			}).catch(e => log.error(`Failed to delete HF files: ${e.message}`));
+			const hfClient = new HuggingFaceBucketsClient(SETTINGS.HFToken);
+			const pathsToDelete = hfFiles.map(file =>
+				file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name
+			);
+			await hfClient.deleteFiles(SETTINGS.HFBucket, pathsToDelete).catch(e => log.error(`Failed to delete HF files: ${e.message}`));
 		}
 
 		if (localFiles.length) {
 			for (const file of localFiles) {
 				if (file.quarantine) {
 					await prisma.files.update({
-						where: {
-							uuid: file.uuid
-						},
-						data: {
-							quarantine: false,
-							quarantineFile: {
-								delete: true
-							}
-						}
+						where: { uuid: file.uuid },
+						data: { quarantine: false, quarantineFile: { delete: true } }
 					});
 				}
 
@@ -157,15 +144,11 @@ export const deleteFiles = async ({
 
 		if (deleteFromDB) {
 			await prisma.files.deleteMany({
-				where: {
-					uuid: {
-						in: files.map(file => file.uuid)
-					}
-				}
+				where: { uuid: { in: files.map(file => file.uuid) } }
 			});
 		}
 	} catch (error) {
-		log.error(`There was an error removing one/all of the files < [${files.map(file => file.name).join(', ')}] >`);
+		log.error(`There was an error removing one/all of the files <[${files.map(file => file.name).join(', ')}] >`);
 		log.error(error);
 	}
 };
@@ -274,8 +257,8 @@ export const constructFilePublicLink = ({
 	isWatched = false
 }: {
 	fileName: string;
-	isS3?: boolean;
 	isHF?: boolean;
+	isS3?: boolean;
 	isWatched?: boolean;
 	quarantine?: boolean;
 	req: FastifyRequest;
@@ -522,10 +505,7 @@ export const hashFile = async (uploadPath: string): Promise<string> => {
 };
 
 export const handleUploadFile = async ({
-	user,
-	ip,
-	upload,
-	album
+	user, ip, upload, album
 }: {
 	album?: number | null | undefined;
 	ip: string;
@@ -545,6 +525,7 @@ export const handleUploadFile = async ({
 
 	log.debug(`> Name for upload: ${newFilename}`);
 
+	// Move file to permanent location
 	const newPath = fileURLToPath(new URL(`../../../../uploads/${newFilename}`, import.meta.url));
 	const file = {
 		name: newFilename,
@@ -567,9 +548,7 @@ export const handleUploadFile = async ({
 		if (SETTINGS.saveDuplicatesToAlbum && album) {
 			await saveFileToAlbum(album, fileOnDb.file.id);
 		} else {
-			log.info(
-				`> Tried uploading ${file.original} but already exists on database with identifier: ${fileOnDb.file.name}. Consider enabling "Add duplicates to Album"`
-			);
+			log.info(`> Tried uploading ${file.original} but already exists on database with identifier: ${fileOnDb.file.name}. Consider enabling "Add duplicates to Album"`);
 		}
 
 		uploadedFile = fileOnDb.file;
@@ -591,6 +570,7 @@ export const handleUploadFile = async ({
 						headers: {
 							'Authorization': `Bearer ${SETTINGS.HFToken}`
 						},
+						// @ts-ignore
 						body: formData
 					});
 					
@@ -608,10 +588,12 @@ export const handleUploadFile = async ({
 			await jetpack.moveAsync(upload.path, newPath);
 		}
 
+		// Store file in database
 		const savedFile = await storeFileToDb(user ? user : undefined, file, album ? album : undefined);
 
 		uploadedFile = savedFile.file;
-		
+
+		// Generate thumbnails
 		void generateThumbnails({
 			filename: savedFile.file.name,
 			tmp: savedFile.file.isS3 || savedFile.file.isHF,
