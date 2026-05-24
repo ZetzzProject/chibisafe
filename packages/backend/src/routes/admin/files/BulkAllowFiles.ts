@@ -11,7 +11,6 @@ import { responseMessageSchema } from '@/structures/schemas/ResponseMessage.js';
 import { SETTINGS } from '@/structures/settings.js';
 import { quarantinePath, uploadPath } from '@/utils/File.js';
 import { generateThumbnails } from '@/utils/Thumbnails.js';
-
 export const schema = {
 	summary: 'Unquarantine files',
 	description: 'Removes the quarantine status from the provided files',
@@ -55,6 +54,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			quarantine: true,
 			quarantineFile: true,
 			isS3: true,
+			isHF: true,
 			isWatched: true
 		}
 	});
@@ -85,6 +85,24 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 
 			await S3Client.send(copyCommand);
 			await S3Client.send(removeCommand);
+		} else if (file.isHF) {
+			const { copyFile, deleteFiles } = await import('@huggingface/hub');
+			const quarantineKey = `quarantine/${file.quarantineFile!.name}`;
+			
+			try {
+				await copyFile({
+					source: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: quarantineKey },
+					destination: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: file.name },
+					accessToken: SETTINGS.HFToken
+				});
+				await deleteFiles({
+					repo: { type: 'bucket', name: SETTINGS.HFBucket },
+					paths: [quarantineKey],
+					accessToken: SETTINGS.HFToken
+				});
+			} catch (error) {
+				req.log.error('Could not move HF file');
+			}
 		}
 
 		await prisma.files.update({
@@ -106,7 +124,11 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			);
 		}
 
-		void generateThumbnails({ filename: file.name, tmp: file.isS3, watched: file.isWatched });
+		void generateThumbnails({
+			filename: file.name,
+			tmp: file.isS3,
+			watched: file.isWatched
+		});
 	}
 
 	return res.send({

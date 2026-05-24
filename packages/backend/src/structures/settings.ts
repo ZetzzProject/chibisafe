@@ -26,7 +26,7 @@ export const loadSettings = async (force = false) => {
 		log.debug('Settings already exist in database, skipping creation...');
 
 		// These settings should be set from the environment variables
-		SETTINGS.port = Number.isNaN(Number(process.env.PORT)) ? 8000 : Number(process.env.PORT) ?? 8000;
+		SETTINGS.port = Number.isNaN(Number(process.env.PORT)) ? 8000 : (Number(process.env.PORT) ?? 8000);
 		SETTINGS.host = process.env.HOST ?? 'localhost';
 
 		// These are static for now
@@ -68,6 +68,9 @@ export const loadSettings = async (force = false) => {
 		SETTINGS.useNetworkStorage = settingsTable.useNetworkStorage;
 		SETTINGS.useMinimalHomepage = settingsTable.useMinimalHomepage;
 		SETTINGS.useUrlShortener = settingsTable.useUrlShortener;
+		SETTINGS.useHFStorage = settingsTable.useHFStorage;
+		SETTINGS.HFToken = settingsTable.HFToken;
+		SETTINGS.HFBucket = settingsTable.HFBucket;
 		SETTINGS.generateThumbnails = settingsTable.generateThumbnails;
 		SETTINGS.S3Region = settingsTable.S3Region;
 		SETTINGS.S3Bucket = settingsTable.S3Bucket;
@@ -115,6 +118,9 @@ export const loadSettings = async (force = false) => {
 		metaTwitterHandle: '@your-twitter-handle',
 		usersStorageQuota: 0,
 		useNetworkStorage: false,
+		useHFStorage: false,
+		HFToken: '',
+		HFBucket: '',
 		useMinimalHomepage: false,
 		useUrlShortener: false,
 		generateThumbnails: true,
@@ -409,6 +415,25 @@ const SETTINGS_META = {
 		name: 'S3 Public URL',
 		example: 'https://chibisafe.s3.us-east-1.amazonaws.com',
 		category: 'uploads'
+	},
+	useHFStorage: {
+		type: 'boolean',
+		description: 'Whether or not to use Hugging Face Buckets (experimental). Overrides S3 if both are enabled.',
+		name: 'Use Huggingface Bucket (experimental)',
+		category: 'uploads'
+	},
+	HFToken: {
+		type: 'string',
+		description: 'The access token for Hugging Face.',
+		name: 'HF Token',
+		category: 'uploads'
+	},
+	HFBucket: {
+		type: 'string',
+		description: 'The name of the Hugging Face bucket (format: user/bucket).',
+		name: 'HF Bucket Name',
+		category: 'uploads',
+		example: 'username/my-bucket'
 	},
 	useMinimalHomepage: {
 		type: 'boolean',

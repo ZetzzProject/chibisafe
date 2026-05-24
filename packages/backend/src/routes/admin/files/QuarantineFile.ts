@@ -9,7 +9,6 @@ import { http4xxErrorSchema } from '@/structures/schemas/HTTP4xxError.js';
 import { http5xxErrorSchema } from '@/structures/schemas/HTTP5xxError.js';
 import { SETTINGS } from '@/structures/settings.js';
 import { deleteThumbnails, getUniqueFileIdentifier, quarantinePath, uploadPath } from '@/utils/File.js';
-
 export const schema = {
 	summary: 'Quarantine file',
 	description: 'Quarantines a file making it unaccessible to users',
@@ -79,6 +78,24 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 
 		await S3Client.send(copyCommand);
 		await S3Client.send(removeCommand);
+	} else if (file.isHF) {
+		const { copyFile, deleteFiles } = await import('@huggingface/hub');
+		try {
+			await copyFile({
+				source: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: file.name },
+				destination: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: `quarantine/${newFileName}` },
+				accessToken: SETTINGS.HFToken
+			});
+			await deleteFiles({
+				repo: { type: 'bucket', name: SETTINGS.HFBucket },
+				paths: [file.name],
+				accessToken: SETTINGS.HFToken
+			});
+		} catch (error) {
+			req.log.error('Could not move HF file');
+			void res.internalServerError('Could not move HF file');
+			return;
+		}
 	}
 
 	await prisma.files.update({

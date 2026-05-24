@@ -32,7 +32,9 @@ export const options = {
 };
 
 export const run = async (req: RequestWithUser, res: FastifyReply) => {
-	const { uuid } = req.params as { uuid: string };
+	const { uuid } = req.params as {
+		uuid: string;
+	};
 
 	const file = await prisma.files.findFirst({
 		where: {
@@ -45,6 +47,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			quarantine: true,
 			quarantineFile: true,
 			isS3: true,
+			isHF: true,
 			isWatched: true
 		}
 	});
@@ -62,7 +65,9 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 	});
 
 	// Remove the file from disk
-	await deleteFiles({ files: [file] });
+	await deleteFiles({
+		files: [file]
+	});
 
 	return res.send({
 		message: 'Successfully deleted the file'

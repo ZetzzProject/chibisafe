@@ -50,6 +50,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			quarantine: true,
 			quarantineFile: true,
 			isS3: true,
+			isHF: true,
 			isWatched: true
 		}
 	});
@@ -68,7 +69,9 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		}
 	});
 
-	await deleteFiles({ files: dbFiles });
+	await deleteFiles({
+		files: dbFiles
+	});
 
 	return res.send({
 		message: 'Successfully deleted files'

@@ -44,6 +44,7 @@ model files {
 	ip String
 	sourceUrl String?
 	isS3 Boolean @default(false)
+	isHF Boolean @default(false)
 	isWatched Boolean @default(false)
 	createdAt DateTime @default(now())
 	editedAt DateTime?
@@ -165,6 +166,9 @@ model settings {
 	S3Endpoint String @default("")
 	S3PathStyle Boolean @default(false)
 	S3PublicUrl String @default("")
+	useHFStorage Boolean @default(false)
+	HFToken String @default("")     
+	HFBucket String @default("")        
 	defaultSortOrder String @default("createdAt:desc")
 }
 

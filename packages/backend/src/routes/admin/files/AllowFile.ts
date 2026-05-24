@@ -10,7 +10,6 @@ import { http5xxErrorSchema } from '@/structures/schemas/HTTP5xxError.js';
 import { SETTINGS } from '@/structures/settings.js';
 import { quarantinePath, uploadPath } from '@/utils/File.js';
 import { generateThumbnails } from '@/utils/Thumbnails.js';
-
 export const schema = {
 	summary: 'Unquarantine file',
 	description: 'Removes the quarantine status from a file',
@@ -36,7 +35,9 @@ export const options = {
 };
 
 export const run = async (req: RequestWithUser, res: FastifyReply) => {
-	const { uuid } = req.params as { uuid: string };
+	const { uuid } = req.params as {
+		uuid: string;
+	};
 
 	const file = await prisma.files.findFirst({
 		where: {
@@ -47,6 +48,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			uuid: true,
 			name: true,
 			isS3: true,
+			isHF: true,
 			isWatched: true,
 			quarantineFile: true
 		}
@@ -78,6 +80,26 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 
 		await S3Client.send(copyCommand);
 		await S3Client.send(removeCommand);
+	} else if (file.isHF) {
+		const { copyFile, deleteFiles } = await import('@huggingface/hub');
+		const quarantineKey = `quarantine/${file.quarantineFile!.name}`;
+		
+		try {
+			await copyFile({
+				source: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: quarantineKey },
+				destination: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: file.name },
+				accessToken: SETTINGS.HFToken
+			});
+			await deleteFiles({
+				repo: { type: 'bucket', name: SETTINGS.HFBucket },
+				paths: [quarantineKey],
+				accessToken: SETTINGS.HFToken
+			});
+		} catch (error) {
+			req.log.error('Could not move HF file');
+			void res.internalServerError('Could not move HF file');
+			return;
+		}
 	}
 
 	await prisma.files.update({
@@ -96,7 +118,11 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		await jetpack.moveAsync(path.join(quarantinePath, file.quarantineFile!.name), path.join(uploadPath, file.name));
 	}
 
-	void generateThumbnails({ filename: file.name, tmp: file.isS3, watched: file.isWatched });
+	void generateThumbnails({
+		filename: file.name,
+		tmp: file.isS3,
+		watched: file.isWatched
+	});
 
 	return res.send({
 		message: 'Successfully allowed the file'

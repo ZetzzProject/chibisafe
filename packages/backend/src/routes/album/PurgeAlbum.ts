@@ -63,6 +63,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 					select: {
 						id: true,
 						isS3: true,
+						isHF: true,
 						isWatched: true,
 						name: true,
 						quarantine: true,

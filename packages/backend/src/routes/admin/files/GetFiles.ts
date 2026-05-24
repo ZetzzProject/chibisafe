@@ -78,6 +78,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 				}
 			},
 			isS3: true,
+			isHF: true,
 			isWatched: true
 		},
 		orderBy: {
@@ -177,6 +178,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 				fileName: quarantine ? file.quarantineFile.name : file.name,
 				quarantine,
 				isS3: file.isS3,
+				isHF: file.isHF,
 				isWatched: file.isWatched
 			})
 		});

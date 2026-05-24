@@ -52,7 +52,9 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 	}
 
 	if (sortOrder !== undefined && sortOrder !== null && !isValidSortOrder(sortOrder)) {
-		void res.badRequest('Invalid sort order. Valid options: createdAt:asc, createdAt:desc, name:asc, name:desc, id:desc');
+		void res.badRequest(
+			'Invalid sort order. Valid options: createdAt:asc, createdAt:desc, name:asc, name:desc, id:desc'
+		);
 		return;
 	}
 

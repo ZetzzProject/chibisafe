@@ -38,7 +38,15 @@ export const options = {
 };
 
 export const run = async (req: RequestWithUser, res: FastifyReply) => {
-	const { page = 1, limit = 50, search = '' } = req.query as { limit?: number; page?: number; search?: string };
+	const {
+		page = 1,
+		limit = 50,
+		search = ''
+	} = req.query as {
+		limit?: number;
+		page?: number;
+		search?: string;
+	};
 
 	let dbSearchObject: Prisma.filesCountArgs['where'] = {
 		userId: req.user.id
@@ -91,6 +99,7 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 			uuid: true,
 			quarantine: true,
 			isS3: true,
+			isHF: true,
 			isWatched: true,
 			sourceUrl: true
 		},
@@ -103,7 +112,13 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 	for (const file of files) {
 		readyFiles.push({
 			...file,
-			...constructFilePublicLink({ req, fileName: file.name, isS3: file.isS3, isWatched: file.isWatched })
+			...constructFilePublicLink({
+				req,
+				fileName: file.name,
+				isS3: file.isS3,
+				isHF: file.isHF,
+				isWatched: file.isWatched
+			})
 		});
 	}
 

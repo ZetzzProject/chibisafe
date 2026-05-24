@@ -16,7 +16,6 @@ import { SETTINGS } from '@/structures/settings.js';
 import { log } from '@/utils/Logger.js';
 import { generateThumbnails, getFileThumbnail, removeThumbs } from './Thumbnails.js';
 import { getHost } from './Util.js';
-
 const fileIdentifierMaxTries = 5;
 
 // const preserveExtensions = [
@@ -47,11 +46,15 @@ export const getUniqueFileIdentifier = async (): Promise<string | null> => {
 	for (let i = 0; i < fileIdentifierMaxTries; i++) {
 		const identifier = randomstring.generate(options);
 
-		const exists = await prisma.$queryRaw<{ id: number }[]>`
+		const exists = await prisma.$queryRaw<
+			{
+				id: number;
+			}[]
+		>`
 		SELECT id from files
 		WHERE name LIKE ${`${identifier}.%`}
 		LIMIT 1;
-	`;
+	    `;
 
 		if (!exists.length) {
 			return identifier;
@@ -77,6 +80,7 @@ export const deleteFiles = async ({
 }: {
 	deleteFromDB?: boolean;
 	files: {
+		isHF: boolean;
 		isS3: boolean;
 		isWatched: boolean;
 		name: string;
@@ -86,7 +90,8 @@ export const deleteFiles = async ({
 	}[];
 }) => {
 	const s3Files = files.filter(file => file.isS3);
-	const localFiles = files.filter(file => !file.isS3);
+	const hfFiles = files.filter(file => file.isHF);
+	const localFiles = files.filter(file => !file.isS3 && !file.isHF);
 
 	try {
 		if (s3Files.length) {
@@ -106,19 +111,24 @@ export const deleteFiles = async ({
 			await S3Client.send(command);
 		}
 
+		if (hfFiles.length) {
+			const { deleteFiles: hfDeleteFiles } = await import('@huggingface/hub');
+			const pathsToDelete = hfFiles.map(file =>
+				file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name
+			);
+			await hfDeleteFiles({
+				repo: { type: 'bucket', name: SETTINGS.HFBucket },
+				paths: pathsToDelete,
+				accessToken: SETTINGS.HFToken
+			}).catch(e => log.error(`Failed to delete HF files: ${e.message}`));
+		}
+
 		if (localFiles.length) {
 			for (const file of localFiles) {
 				if (file.quarantine) {
 					await prisma.files.update({
-						where: {
-							uuid: file.uuid
-						},
-						data: {
-							quarantine: false,
-							quarantineFile: {
-								delete: true
-							}
-						}
+						where: { uuid: file.uuid },
+						data: { quarantine: false, quarantineFile: { delete: true } }
 					});
 				}
 
@@ -137,15 +147,11 @@ export const deleteFiles = async ({
 
 		if (deleteFromDB) {
 			await prisma.files.deleteMany({
-				where: {
-					uuid: {
-						in: files.map(file => file.uuid)
-					}
-				}
+				where: { uuid: { in: files.map(file => file.uuid) } }
 			});
 		}
 	} catch (error) {
-		log.error(`There was an error removing one/all of the files < [${files.map(file => file.name).join(', ')}] >`);
+		log.error(`There was an error removing one/all of the files <[${files.map(file => file.name).join(', ')}] >`);
 		log.error(error);
 	}
 };
@@ -166,7 +172,9 @@ export const purgeUserFiles = async (userId: number) => {
 			}
 		});
 
-		await deleteFiles({ files });
+		await deleteFiles({
+			files
+		});
 
 		await prisma.files.deleteMany({
 			where: {
@@ -189,7 +197,9 @@ export const purgePublicFiles = async () => {
 			}
 		});
 
-		await deleteFiles({ files });
+		await deleteFiles({
+			files
+		});
 
 		await prisma.files.deleteMany({
 			where: {
@@ -212,7 +222,9 @@ export const purgeIpFiles = async (ip: string) => {
 			}
 		});
 
-		await deleteFiles({ files });
+		await deleteFiles({
+			files
+		});
 
 		await prisma.files.deleteMany({
 			where: {
@@ -244,19 +256,27 @@ export const constructFilePublicLink = ({
 	fileName,
 	quarantine = false,
 	isS3 = false,
+	isHF = false,
 	isWatched = false
 }: {
 	fileName: string;
+	isHF?: boolean;
 	isS3?: boolean;
 	isWatched?: boolean;
 	quarantine?: boolean;
 	req: FastifyRequest;
 }) => {
 	const host = SETTINGS.serveUploadsFrom ? SETTINGS.serveUploadsFrom : getHost(req);
+	let url = `${host}${quarantine ? '/quarantine' : ''}${isWatched ? '/live' : ''}/${fileName}`;
+
+	if (isS3) {
+		url = `${SETTINGS.S3PublicUrl || SETTINGS.S3Endpoint}${quarantine ? '/quarantine' : ''}/${fileName}`;
+	} else if (isHF) {
+		url = `https://huggingface.co/resolve/buckets/${SETTINGS.HFBucket}/${quarantine ? 'quarantine/' : ''}${fileName}`;
+	}
+
 	const data = {
-		url: isS3
-			? `${SETTINGS.S3PublicUrl || SETTINGS.S3Endpoint}${quarantine ? '/quarantine' : ''}/${fileName}`
-			: `${host}${quarantine ? '/quarantine' : ''}${isWatched ? '/live' : ''}/${fileName}`,
+		url,
 		thumb: '',
 		preview: ''
 	};
@@ -340,6 +360,7 @@ export const storeFileToDb = async (
 		ip: file.ip,
 		sourceUrl: file.sourceUrl ?? null,
 		isS3: file.isS3,
+		isHF: file.isHF,
 		isWatched: file.isWatched,
 		createdAt: now,
 		editedAt: now
@@ -377,7 +398,12 @@ export const storeFileToDb = async (
 	}
 };
 
-export const updateFileOnDb = async (user: RequestUser | User | undefined, file: FileInProgress & { uuid: string }) => {
+export const updateFileOnDb = async (
+	user: RequestUser | User | undefined,
+	file: FileInProgress & {
+		uuid: string;
+	}
+) => {
 	const now = moment.utc().toDate();
 
 	const data = {
@@ -389,13 +415,17 @@ export const updateFileOnDb = async (user: RequestUser | User | undefined, file:
 		hash: file.hash,
 		ip: file.ip,
 		isS3: file.isS3,
+		isHF: file.isHF,
 		isWatched: file.isWatched,
 		createdAt: now,
 		editedAt: now
 	};
 
 	return prisma.files.update({
-		where: { uuid: file.uuid, isWatched: true },
+		where: {
+			uuid: file.uuid,
+			isWatched: true
+		},
 		data
 	});
 };
@@ -478,10 +508,7 @@ export const hashFile = async (uploadPath: string): Promise<string> => {
 };
 
 export const handleUploadFile = async ({
-	user,
-	ip,
-	upload,
-	album
+	user, ip, upload, album
 }: {
 	album?: number | null | undefined;
 	ip: string;
@@ -514,6 +541,7 @@ export const handleUploadFile = async ({
 		ip,
 		sourceUrl: upload.sourceUrl,
 		isS3: false,
+		isHF: Boolean(SETTINGS.useHFStorage),
 		isWatched: false
 	};
 
@@ -523,15 +551,40 @@ export const handleUploadFile = async ({
 		if (SETTINGS.saveDuplicatesToAlbum && album) {
 			await saveFileToAlbum(album, fileOnDb.file.id);
 		} else {
-			log.info(
-				`> Tried uploading ${file.original} but already exists on database with identifier: ${fileOnDb.file.name}. Consider enabling "Add duplicates to Album"`
-			);
+			log.info(`> Tried uploading ${file.original} but already exists on database with identifier: ${fileOnDb.file.name}. Consider enabling "Add duplicates to Album"`);
 		}
 
 		uploadedFile = fileOnDb.file;
 		await deleteTmpFile(upload.path);
 	} else {
-		await jetpack.moveAsync(upload.path, newPath);
+		if (SETTINGS.useHFStorage) {
+			const fileBuffer = await jetpack.readAsync(upload.path, 'buffer');
+			if (fileBuffer) {
+				try {
+					const { uploadFile } = await import('@huggingface/hub');
+					const res = await uploadFile({
+						repo: { type: 'bucket', name: SETTINGS.HFBucket },
+						accessToken: SETTINGS.HFToken,
+						file: {
+							path: newFilename,
+							content: new Blob([fileBuffer], { type: upload.type })
+						}
+					});
+					
+					if (!res) {
+						log.error(`Failed to upload to HF Bucket`);
+						throw new Error('Failed to upload to HF Bucket');
+					}
+				} catch (e) {
+					log.error(e);
+					throw new Error('Failed to upload to HF Bucket');
+				}
+			}
+			await deleteTmpFile(upload.path);
+		} else {
+			await jetpack.moveAsync(upload.path, newPath);
+		}
+
 		// Store file in database
 		const savedFile = await storeFileToDb(user ? user : undefined, file, album ? album : undefined);
 
@@ -540,7 +593,7 @@ export const handleUploadFile = async ({
 		// Generate thumbnails
 		void generateThumbnails({
 			filename: savedFile.file.name,
-			tmp: savedFile.file.isS3,
+			tmp: savedFile.file.isS3 || savedFile.file.isHF,
 			watched: savedFile.file.isWatched
 		});
 	}
