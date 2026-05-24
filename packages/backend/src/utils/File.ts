@@ -16,7 +16,6 @@ import { SETTINGS } from '@/structures/settings.js';
 import { log } from '@/utils/Logger.js';
 import { generateThumbnails, getFileThumbnail, removeThumbs } from './Thumbnails.js';
 import { getHost } from './Util.js';
-import { HuggingFaceBucketsClient} from './HuggingFace.js'
 const fileIdentifierMaxTries = 5;
 
 // const preserveExtensions = [
@@ -113,11 +112,15 @@ export const deleteFiles = async ({
 		}
 
 		if (hfFiles.length) {
-			const hfClient = new HuggingFaceBucketsClient(SETTINGS.HFToken);
+			const { deleteFiles: hfDeleteFiles } = await import('@huggingface/hub');
 			const pathsToDelete = hfFiles.map(file =>
 				file.quarantine ? `quarantine/${file.quarantineFile?.name ?? file.name}` : file.name
 			);
-			await hfClient.deleteFiles(SETTINGS.HFBucket, pathsToDelete).catch(e => log.error(`Failed to delete HF files: ${e.message}`));
+			await hfDeleteFiles({
+				repo: { type: 'bucket', name: SETTINGS.HFBucket },
+				paths: pathsToDelete,
+				accessToken: SETTINGS.HFToken
+			}).catch(e => log.error(`Failed to delete HF files: ${e.message}`));
 		}
 
 		if (localFiles.length) {
@@ -558,24 +561,18 @@ export const handleUploadFile = async ({
 			const fileBuffer = await jetpack.readAsync(upload.path, 'buffer');
 			if (fileBuffer) {
 				try {
-					const hfUploadUrl = `https://huggingface.co/api/buckets/${SETTINGS.HFBucket}/batch`;
-					const formData = new FormData();
-					
-					const blob = new Blob([fileBuffer], { type: upload.type });
-					formData.append('add', blob, newFilename);
-					formData.append('json', JSON.stringify({ add: [[newFilename]] }));
-
-					const res = await fetch(hfUploadUrl, {
-						method: 'POST',
-						headers: {
-							'Authorization': `Bearer ${SETTINGS.HFToken}`
-						},
-						// @ts-ignore
-						body: formData
+					const { uploadFile } = await import('@huggingface/hub');
+					const res = await uploadFile({
+						repo: { type: 'bucket', name: SETTINGS.HFBucket },
+						accessToken: SETTINGS.HFToken,
+						file: {
+							path: newFilename,
+							content: new Blob([fileBuffer], { type: upload.type })
+						}
 					});
 					
-					if (!res.ok) {
-						log.error(`Failed to upload to HF Bucket: ${await res.text()}`);
+					if (!res) {
+						log.error(`Failed to upload to HF Bucket`);
 						throw new Error('Failed to upload to HF Bucket');
 					}
 				} catch (e) {

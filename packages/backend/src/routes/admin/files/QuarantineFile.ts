@@ -9,8 +9,6 @@ import { http4xxErrorSchema } from '@/structures/schemas/HTTP4xxError.js';
 import { http5xxErrorSchema } from '@/structures/schemas/HTTP5xxError.js';
 import { SETTINGS } from '@/structures/settings.js';
 import { deleteThumbnails, getUniqueFileIdentifier, quarantinePath, uploadPath } from '@/utils/File.js';
-import { HuggingFaceBucketsClient } from '@/utils/HuggingFace.js'
-
 export const schema = {
 	summary: 'Quarantine file',
 	description: 'Quarantines a file making it unaccessible to users',
@@ -81,22 +79,21 @@ export const run = async (req: RequestWithUser, res: FastifyReply) => {
 		await S3Client.send(copyCommand);
 		await S3Client.send(removeCommand);
 	} else if (file.isHF) {
-		const hfClient = new HuggingFaceBucketsClient(SETTINGS.HFToken);
-		
-		const pathsInfo = await hfClient.getPathsInfo(SETTINGS.HFBucket, [file.name]);
-		const xetHash = pathsInfo[0]?.xet_hash;
-
-		if (xetHash) {
-			await hfClient.copyFiles(SETTINGS.HFBucket,[{
-				sourceRepoType: 'bucket',
-				sourceRepoId: SETTINGS.HFBucket,
-				xetHash,
-				destination: `quarantine/${newFileName}`
-			}]);
-			await hfClient.deleteFiles(SETTINGS.HFBucket,[file.name]);
-		} else {
-			req.log.error('Could not find xet_hash for HF file');
-			void res.internalServerError('Could not find xet_hash for HF file');
+		const { copyFile, deleteFiles } = await import('@huggingface/hub');
+		try {
+			await copyFile({
+				source: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: file.name },
+				destination: { repo: { type: 'bucket', name: SETTINGS.HFBucket }, path: `quarantine/${newFileName}` },
+				accessToken: SETTINGS.HFToken
+			});
+			await deleteFiles({
+				repo: { type: 'bucket', name: SETTINGS.HFBucket },
+				paths: [file.name],
+				accessToken: SETTINGS.HFToken
+			});
+		} catch (error) {
+			req.log.error('Could not move HF file');
+			void res.internalServerError('Could not move HF file');
 			return;
 		}
 	}
